@@ -7,7 +7,7 @@ Tested on Windows 11.
 ## Installation
 
 ### Option 1: Use Pre-built Standalone Package / Installer (Zero Setup for End Users)
-Download the latest release (`SAFE-T-Setup.exe` or `SAFE-T.zip`) from the [Releases page](https://github.com/kamsur/SAFE-T/releases) and follow the instructions in `README.md` (same as `packaging/README_DISTRIBUTION.md`) included in the package.
+Download the latest release (`SAFE-T-Setup.exe` or `SAFE-T.zip`) from the [Releases page](https://github.com/mrk-dreamer/safeT/releases) and follow the instructions in `README.md` (same as `packaging/README_DISTRIBUTION.md`) included in the package.
 
 All runtime dependencies — Python, PyTorch/WhisperX, Wav2Vec2, Piper & KittenTTS models, FFmpeg, libVLC, and the Montreal Forced Aligner (MFA) environment + acoustic models — are bundled inside the package. End users do **not** need to install Python, Conda, MFA, VLC, or FFmpeg.
 
@@ -22,7 +22,7 @@ Installation instructions below.
 
 Clone the repository using git:
 ```bash
-git clone https://github.com/kamsur/SAFE-T.git
+git clone https://github.com/mrk-dreamer/safeT.git
 ```
 
 ### Setup Montreal Forced Aligner (MFA)

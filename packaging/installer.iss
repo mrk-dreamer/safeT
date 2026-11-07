@@ -11,7 +11,7 @@
 #define AppName "SAFE-T"
 #define AppVersion "1.0.0"
 #define AppPublisher "SAFE-T"
-#define AppURL "https://github.com/kamsur/SAFE-T"
+#define AppURL "https://github.com/mrk-dreamer/safeT"
 #define AppExeName "SAFE-T.exe"
 
 [Setup]
