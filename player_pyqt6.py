@@ -29,8 +29,9 @@ from PyQt6.QtWidgets import (
     QMenu,
     QMessageBox,
 )
-from PyQt6 import QtCore
+from PyQt6 import QtCore, QtGui
 import pyqtgraph as pg
+import pyqtgraph.exporters as pg_exporters
 from asr import WhisperX_ASR
 from formants import FormantData
 from helper import (
@@ -83,6 +84,66 @@ class PhonemeRegion:
             "Text here", anchor=(0.5, 0.5), color=(0, 0, 0), fill=(255, 255, 255, 100)
         )
     )
+
+
+class CompactLegendItem(pg.GraphicsWidget, pg.GraphicsWidgetAnchor):
+    """Compact bottom-right legend displaying only each vowel's colored shape and label."""
+
+    def __init__(self, entries: list[tuple[str, tuple[int, int, int], tuple[int, int, int], str]], col_count: int = 3):
+        pg.GraphicsWidget.__init__(self)
+        pg.GraphicsWidgetAnchor.__init__(self)
+        self.entries = entries
+        self.col_count = max(1, min(col_count, len(entries))) if entries else 1
+        self.row_count = (
+            (len(entries) + self.col_count - 1) // self.col_count if entries else 0
+        )
+        self.row_h = 15
+        self.col_w = 34
+        self.pad_x = 5
+        self.pad_y = 4
+        w = self.pad_x * 2 + self.col_count * self.col_w if entries else 0
+        h = self.pad_y * 2 + self.row_count * self.row_h if entries else 0
+        self.setGeometry(0, 0, w, h)
+        self.setZValue(100)
+
+    def paint(self, p, *args):
+        if not self.entries:
+            return
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        rect = self.boundingRect()
+        p.setPen(pg.mkPen((180, 180, 180, 200), width=1))
+        p.setBrush(pg.mkBrush(255, 255, 255, 220))
+        p.drawRoundedRect(rect, 3, 3)
+        font = QtGui.QFont("Segoe UI", 8)
+        p.setFont(font)
+        for idx, (label, color, border_color, symbol) in enumerate(self.entries):
+            r = idx // self.col_count
+            c = idx % self.col_count
+            x0 = self.pad_x + c * self.col_w
+            y0 = self.pad_y + r * self.row_h
+            cx = x0 + 6
+            cy = y0 + self.row_h / 2.0
+            p.save()
+            p.translate(cx, cy)
+            sym_size = 9.5 if symbol.startswith("t") else 8.5
+            pg.graphicsItems.ScatterPlotItem.drawSymbol(
+                p,
+                symbol,
+                sym_size,
+                pg.mkPen(border_color, width=1.1),
+                pg.mkBrush(*color, 195),
+            )
+            p.restore()
+            p.setPen(pg.mkPen(0, 0, 0))
+            text_rect = QtCore.QRectF(x0 + 14, y0, self.col_w - 14, self.row_h)
+            p.drawText(
+                text_rect,
+                int(
+                    QtCore.Qt.AlignmentFlag.AlignLeft
+                    | QtCore.Qt.AlignmentFlag.AlignVCenter
+                ),
+                label,
+            )
 
 
 class AutoSpeechAnalyzer(QMainWindow):
@@ -302,6 +363,11 @@ class AutoSpeechAnalyzer(QMainWindow):
         axis_layout.addWidget(QLabel("Y Axis (Formant):"))
         self.y_axis_combo = QComboBox()
         axis_layout.addWidget(self.y_axis_combo)
+        for i in range(5):
+            self.x_axis_combo.addItem(f"Formant {i+1}", i)
+            self.y_axis_combo.addItem(f"Formant {i+1}", i)
+        self.x_axis_combo.setCurrentIndex(1)  # Default X: Formant 2
+        self.y_axis_combo.setCurrentIndex(0)  # Default Y: Formant 1
         self.formant_scatter_layout.addLayout(axis_layout)
         # Phoneme selector
         self.formant_scatter_layout.addWidget(QLabel("Select phonemes to plot:"))
@@ -332,8 +398,19 @@ class AutoSpeechAnalyzer(QMainWindow):
         self.monophthong_scatter_plot.invertY(True)  # Invert Y-axis for vowel plot
         self.monophthong_scatter_plot.invertX(True)  # Invert X-axis for vowel plot
         self.monophthong_scatter_plot.showGrid(x=True, y=True)
-        self.monophthong_scatter_plot.setLabel("bottom", "Frequency", units="Hz")
-        self.monophthong_scatter_plot.setLabel("left", "Frequency", units="Hz")
+        self.monophthong_scatter_plot.getAxis("bottom").enableAutoSIPrefix(True)
+        self.monophthong_scatter_plot.getAxis("left").enableAutoSIPrefix(True)
+        self.monophthong_scatter_plot.setLabel(
+            "bottom", self.x_axis_combo.currentText(), units="Hz"
+        )
+        self.monophthong_scatter_plot.setLabel(
+            "left", self.y_axis_combo.currentText(), units="Hz"
+        )
+        self.monophthong_scatter_plot.getViewBox().sigRangeChanged.connect(
+            lambda vb, ranges: self.update_scatter_label_visibility(
+                self.monophthong_scatter_plot
+            )
+        )
         monophthong_layout.addWidget(
             self.monophthong_scatter_plot, alignment=QtCore.Qt.AlignmentFlag.AlignCenter
         )
@@ -374,8 +451,19 @@ class AutoSpeechAnalyzer(QMainWindow):
             True
         )  # Invert X-axis for vowel plot
         self.centring_diphthong_scatter_plot.showGrid(x=True, y=True)
-        self.centring_diphthong_scatter_plot.setLabel("bottom", "Frequency", units="Hz")
-        self.centring_diphthong_scatter_plot.setLabel("left", "Frequency", units="Hz")
+        self.centring_diphthong_scatter_plot.getAxis("bottom").enableAutoSIPrefix(True)
+        self.centring_diphthong_scatter_plot.getAxis("left").enableAutoSIPrefix(True)
+        self.centring_diphthong_scatter_plot.setLabel(
+            "bottom", self.x_axis_combo.currentText(), units="Hz"
+        )
+        self.centring_diphthong_scatter_plot.setLabel(
+            "left", self.y_axis_combo.currentText(), units="Hz"
+        )
+        self.centring_diphthong_scatter_plot.getViewBox().sigRangeChanged.connect(
+            lambda vb, ranges: self.update_scatter_label_visibility(
+                self.centring_diphthong_scatter_plot
+            )
+        )
         centring_layout.addWidget(
             self.centring_diphthong_scatter_plot,
             alignment=QtCore.Qt.AlignmentFlag.AlignCenter,
@@ -414,8 +502,19 @@ class AutoSpeechAnalyzer(QMainWindow):
         self.rising_diphthong_scatter_plot.invertY(True)  # Invert Y-axis for vowel plot
         self.rising_diphthong_scatter_plot.invertX(True)  # Invert X-axis for vowel plot
         self.rising_diphthong_scatter_plot.showGrid(x=True, y=True)
-        self.rising_diphthong_scatter_plot.setLabel("bottom", "Frequency", units="Hz")
-        self.rising_diphthong_scatter_plot.setLabel("left", "Frequency", units="Hz")
+        self.rising_diphthong_scatter_plot.getAxis("bottom").enableAutoSIPrefix(True)
+        self.rising_diphthong_scatter_plot.getAxis("left").enableAutoSIPrefix(True)
+        self.rising_diphthong_scatter_plot.setLabel(
+            "bottom", self.x_axis_combo.currentText(), units="Hz"
+        )
+        self.rising_diphthong_scatter_plot.setLabel(
+            "left", self.y_axis_combo.currentText(), units="Hz"
+        )
+        self.rising_diphthong_scatter_plot.getViewBox().sigRangeChanged.connect(
+            lambda vb, ranges: self.update_scatter_label_visibility(
+                self.rising_diphthong_scatter_plot
+            )
+        )
         rising_layout.addWidget(
             self.rising_diphthong_scatter_plot,
             alignment=QtCore.Qt.AlignmentFlag.AlignCenter,
@@ -1693,25 +1792,39 @@ class AutoSpeechAnalyzer(QMainWindow):
 
     def setup_formant_scatter_plot(self):
 
-        # Populate axis combos and phoneme list
-        n_formants = self.formant_data.n_formants if self.formant_data else 4
+        # Populate axis combos and phoneme list without duplicating entries
+        n_formants = self.formant_data.n_formants if self.formant_data else 5
+        prev_x = self.x_axis_combo.currentIndex()
+        prev_y = self.y_axis_combo.currentIndex()
+        self.x_axis_combo.blockSignals(True)
+        self.y_axis_combo.blockSignals(True)
+        self.x_axis_combo.clear()
+        self.y_axis_combo.clear()
         for i in range(n_formants):
             self.x_axis_combo.addItem(f"Formant {i+1}", i)
             self.y_axis_combo.addItem(f"Formant {i+1}", i)
-        self.x_axis_combo.setCurrentIndex(0)
-        self.y_axis_combo.setCurrentIndex(1 if n_formants > 1 else 0)
+        self.x_axis_combo.setCurrentIndex(
+            prev_x if 0 <= prev_x < n_formants else (1 if n_formants > 1 else 0)
+        )
+        self.y_axis_combo.setCurrentIndex(
+            prev_y if 0 <= prev_y < n_formants else 0
+        )
+        self.x_axis_combo.blockSignals(False)
+        self.y_axis_combo.blockSignals(False)
 
         self.update_phoneme_picker_list_widget()
 
-        self.x_axis_combo.currentIndexChanged.connect(
-            self.update_all_formant_scatter_plots
-        )
-        self.y_axis_combo.currentIndexChanged.connect(
-            self.update_all_formant_scatter_plots
-        )
-        self.phoneme_picker_list_widget.itemSelectionChanged.connect(
-            self.update_all_formant_scatter_plots
-        )
+        if not getattr(self, "_scatter_signals_connected", False):
+            self.x_axis_combo.currentIndexChanged.connect(
+                self.update_all_formant_scatter_plots
+            )
+            self.y_axis_combo.currentIndexChanged.connect(
+                self.update_all_formant_scatter_plots
+            )
+            self.phoneme_picker_list_widget.itemSelectionChanged.connect(
+                self.update_all_formant_scatter_plots
+            )
+            self._scatter_signals_connected = True
 
         self.update_all_formant_scatter_plots()
 
@@ -1816,7 +1929,7 @@ class AutoSpeechAnalyzer(QMainWindow):
             hull_labels = points[hull_indices, 2]
 
             # Plot polygon (red outline)
-            poly = pg.PlotDataItem(
+            poly = pg.PlotCurveItem(
                 hull_coords[:, 0].tolist() + [hull_coords[0, 0]],
                 hull_coords[:, 1].tolist() + [hull_coords[0, 1]],
                 pen=pg.mkPen("r", width=2),
@@ -1843,12 +1956,160 @@ class AutoSpeechAnalyzer(QMainWindow):
             #     ellipse.setZValue(-8)
             #     plot_widget.addItem(ellipse)
 
+    # Lists of maximally distinct non-red colors and enclosed shapes (red is reserved for reference polygon)
+    SCATTER_COLORS: list[tuple[int, int, int]] = [
+        (66, 165, 245),   # 0: Bright Blue (pairs with 'o')
+        (255, 152, 36),   # 1: Vivid Orange (pairs with 's')
+        (76, 195, 105),   # 2: Emerald Green (pairs with 'd')
+        (171, 110, 225),  # 3: Amethyst Purple (pairs with 'p')
+        (255, 210, 30),   # 4: Gold Yellow (pairs with 'h')
+        (38, 198, 218),   # 5: Cyan Turquoise (pairs with 't')
+        (175, 120, 75),   # 6: Warm Bronze / Brown (pairs with 't1')
+        (150, 205, 55),   # 7: Lime Chartreuse (pairs with 't2')
+        (110, 125, 215),  # 8: Indigo Periwinkle (pairs with 't3')
+        (190, 195, 45),   # 9: Citron Olive (pairs with 'o' - opposite hue to 0 Blue)
+        (38, 166, 154),   # 10: Deep Sea Teal (pairs with 's' - opposite hue to 1 Orange)
+        (218, 135, 215),  # 11: Orchid Lavender (pairs with 'd' - opposite hue to 2 Green)
+    ]
+    SCATTER_SHAPES: list[str] = [
+        "o",   # Circle
+        "s",   # Square
+        "d",   # Diamond
+        "p",   # Pentagon
+        "h",   # Hexagon
+        "t",   # Triangle down
+        "t1",  # Triangle up
+        "t2",  # Triangle right
+        "t3",  # Triangle left
+    ]
+
+    def get_phoneme_style(
+        self, phoneme: str, phoneme_type: str, sorted_vowels: list[str]
+    ) -> tuple[tuple[int, int, int], str]:
+        """
+        Deterministically select a (color, symbol) pair from SCATTER_COLORS and SCATTER_SHAPES
+        based on the vowel's index in the current dataset's sorted vowel list (no hardcoded vowel mapping).
+        """
+        if phoneme in sorted_vowels:
+            idx = sorted_vowels.index(phoneme)
+        else:
+            idx = 0
+        color = self.SCATTER_COLORS[idx % len(self.SCATTER_COLORS)]
+        if phoneme_type == "monophthong":
+            shape = self.SCATTER_SHAPES[idx % len(self.SCATTER_SHAPES)]
+        else:
+            shape = "o"
+        return color, shape
+
+    def update_scatter_label_visibility(self, plot_widget):
+        """
+        Dynamically adjust visibility of point labels based on current zoom level (ViewBox range):
+        - When zoomed out, close points of the same vowel collapse to a single label per cluster,
+          while distant outliers still get their own labels.
+        - As we zoom in and points move further apart on screen, more labels appear.
+        - Same-vowel labels have a higher closeness threshold (dropped first when too close),
+          while different-vowel labels have a lower closeness threshold.
+        """
+        if getattr(plot_widget, "_exporting_lock", False):
+            return
+        label_entries = getattr(plot_widget, "point_label_items", None)
+        if not label_entries:
+            return
+
+        vb = plot_widget.getViewBox()
+        x_range, y_range = vb.viewRange()
+        x_min, x_max = min(x_range), max(x_range)
+        y_min, y_max = min(y_range), max(y_range)
+        span_x = max(x_max - x_min, 1e-6)
+        span_y = max(y_max - y_min, 1e-6)
+
+        # Normalized screen-space closeness thresholds (fraction of current view span)
+        # Same-vowel labels are dropped first when closer than same_vowel_thresh;
+        # different-vowel labels use a much smaller closeness threshold.
+        same_vowel_thresh = 0.16
+        diff_vowel_thresh = 0.045
+
+        # Separate visible vs off-screen points
+        visible_entries = []
+        for entry in label_entries:
+            x, y = entry["x"], entry["y"]
+            if x_min <= x <= x_max and y_min <= y <= y_max:
+                entry["nx"] = (x - x_min) / span_x
+                entry["ny"] = (y - y_min) / span_y
+                visible_entries.append(entry)
+            else:
+                entry["text_item"].setVisible(False)
+
+        if not visible_entries:
+            return
+
+        # Group visible entries by vowel
+        by_vowel: dict[str, list[dict]] = {}
+        for entry in visible_entries:
+            by_vowel.setdefault(entry["vowel"], []).append(entry)
+
+        accepted: list[dict] = []
+        accepted_ids: set[int] = set()
+
+        def is_far_enough(cand: dict) -> bool:
+            cnx, cny = cand["nx"], cand["ny"]
+            cvowel = cand["vowel"]
+            for acc in accepted:
+                dist = float(np.hypot(cnx - acc["nx"], cny - acc["ny"]))
+                thresh = (
+                    same_vowel_thresh
+                    if acc["vowel"] == cvowel
+                    else diff_vowel_thresh
+                )
+                if dist < thresh:
+                    return False
+            return True
+
+        # Pass 1: Give each vowel one representative label first (closest to its cluster median)
+        for vowel, group in by_vowel.items():
+            med_nx = float(np.median([e["nx"] for e in group]))
+            med_ny = float(np.median([e["ny"] for e in group]))
+            sorted_group = sorted(
+                group,
+                key=lambda e: float(np.hypot(e["nx"] - med_nx, e["ny"] - med_ny)),
+            )
+            for cand in sorted_group:
+                if is_far_enough(cand):
+                    accepted.append(cand)
+                    accepted_ids.add(id(cand))
+                    break
+
+        # Pass 2: Consider remaining points (outliers first: largest distance from their vowel's accepted labels)
+        remaining = [e for e in visible_entries if id(e) not in accepted_ids]
+
+        def min_same_vowel_dist(cand: dict) -> float:
+            same_acc = [a for a in accepted if a["vowel"] == cand["vowel"]]
+            if not same_acc:
+                return float("inf")
+            return min(
+                float(np.hypot(cand["nx"] - a["nx"], cand["ny"] - a["ny"]))
+                for a in same_acc
+            )
+
+        remaining.sort(key=min_same_vowel_dist, reverse=True)
+        for cand in remaining:
+            if is_far_enough(cand):
+                accepted.append(cand)
+                accepted_ids.add(id(cand))
+
+        for entry in visible_entries:
+            entry["text_item"].setVisible(id(entry) in accepted_ids)
+
     def update_formant_scatter_plot(self, plot_widget):
         """
         Redraw all points for selected phonemes and axes, for the given plot type.
         """
         x_idx = self.x_axis_combo.currentData()
         y_idx = self.y_axis_combo.currentData()
+        if x_idx is None:
+            x_idx = 1
+        if y_idx is None:
+            y_idx = 0
         selected_pts = [
             self.phoneme_picker_list_widget.item(i).data(256)
             for i in range(self.phoneme_picker_list_widget.count())
@@ -1858,14 +2119,36 @@ class AutoSpeechAnalyzer(QMainWindow):
         max_y = 0
         plot_widget.clear()
 
-        # Update axis labels to match selected formants
-        x_label = self.x_axis_combo.currentText()
-        y_label = self.y_axis_combo.currentText()
+        # Update axis labels to match selected formants and auto-scale units (Hz / kHz)
+        x_label = self.x_axis_combo.currentText() or f"Formant {x_idx + 1}"
+        y_label = self.y_axis_combo.currentText() or f"Formant {y_idx + 1}"
+        plot_widget.getAxis("bottom").enableAutoSIPrefix(True)
+        plot_widget.getAxis("left").enableAutoSIPrefix(True)
         plot_widget.setLabel("bottom", x_label, units="Hz")
         plot_widget.setLabel("left", y_label, units="Hz")
 
         plot_widget.scatter_data = []
+        plot_widget.point_label_items = []
         plot_type = None
+
+        # Build deterministic sorted list of vowels for this plot from current phoneme data
+        all_plot_pts = [
+            pt
+            for pt in (self.phoneme_timestamps or selected_pts)
+            if pt and pt.formant_targets and self.get_phoneme_plot_widget(self.get_phoneme_type(pt)) == plot_widget
+        ]
+        sorted_vowels = sorted(
+            {
+                 (
+                    ensure_utf8_display(pt.phoneme),
+                    round(float(pt.formant_targets[0].targets[0]), 1)
+                    if len(pt.formant_targets[0].targets) > 0 and not np.isnan(pt.formant_targets[0].targets[0])
+                    else 0.0,
+                 )[0]
+                for pt in all_plot_pts
+            }
+        )
+
         for pt in selected_pts:
             # Only plot matching type
             current_pt_type = self.get_phoneme_type(pt)
@@ -1874,17 +2157,15 @@ class AutoSpeechAnalyzer(QMainWindow):
                 continue
             plot_type = current_pt_type
 
-            phoneme_text_base = ensure_utf8_display(pt.phoneme)
-            import hashlib
-
-            hash_val = int(
-                hashlib.md5(phoneme_text_base.encode("utf-8")).hexdigest(), 16
+            phoneme_text = ensure_utf8_display(pt.phoneme)
+            color, symbol = self.get_phoneme_style(
+                phoneme_text, current_pt_type, sorted_vowels
             )
-            r = (hash_val & 0xFF0000) >> 16
-            g = (hash_val & 0x00FF00) >> 8
-            b = hash_val & 0x0000FF
-            # adjust to avoid too bright or too dark colors
-            color = (r % 200 + 30, g % 200 + 30, b % 200 + 30)
+            border_color = (
+                max(0, color[0] - 55),
+                max(0, color[1] - 55),
+                max(0, color[2] - 55),
+            )
 
             target_coords = []
 
@@ -1892,55 +2173,71 @@ class AutoSpeechAnalyzer(QMainWindow):
                 if len(ft.targets) > max(x_idx, y_idx):
                     x = ft.targets[x_idx]
                     y = ft.targets[y_idx]
-                    max_x = max(max_x, x)
-                    max_y = max(max_y, y)
-                    phoneme_text = ensure_utf8_display(pt.phoneme)
-                    if current_pt_type != "monophthong":
-                        label = f"{phoneme_text} T{i+1}"
-                    else:
-                        label = phoneme_text
-                    # Convert to integer for display and storage
                     if np.isnan(x) or np.isnan(y):
                         continue
+                    max_x = max(max_x, x)
+                    max_y = max(max_y, y)
+                    if current_pt_type != "monophthong":
+                        csv_label = f"{phoneme_text} T{i+1}"
+                    else:
+                        csv_label = phoneme_text
                     x_int = int(x)
                     y_int = int(y)
 
                     target_coords.append((x, y))
 
-                    # Create a scatter plot point without using the hover feature
-                    # that causes errors in pyqtgraph
-                    scatter = pg.PlotDataItem(
-                        [x],
-                        [y],
-                        pen=None,
-                        symbolSize=12,
-                        symbolPen=pg.mkPen(color, width=1),
-                        symbolBrush=pg.mkBrush(*color, 120),
-                        symbol="o",
-                    )
-
-                    # Store data for export with integer values and ensure UTF-8 encoding for label
-                    encoded_label = ensure_utf8_display(label)
+                    # Store data for CSV export
+                    encoded_label = ensure_utf8_display(csv_label)
                     data = {"label": encoded_label, "x": x_int, "y": y_int}
-                    scatter.data = data
-                    plot_widget.addItem(scatter)
                     plot_widget.scatter_data.append(data)
 
-                    # Add text label next to the point
-                    text = pg.TextItem(label, anchor=(0, 1), color=(0, 0, 0))
-                    text.setPos(x, y)
-                    plot_widget.addItem(text)
+                    # For monophthongs, draw every target point and its vowel label inside the shape.
+                    # For diphthongs, only draw circle and vowel label inside the circle (no T1/T2 suffix) at T1 (i == 0);
+                    # no circle, vowel label, or T2 label at T2.
+                    if current_pt_type == "monophthong" or i == 0:
+                        active_symbol = symbol if current_pt_type == "monophthong" else "o"
+                        # Triangles have smaller inscribed circle radius than circles/squares/polygons, so make them slightly larger
+                        marker_size = 30 if active_symbol.startswith("t") else 25
+                        scatter = pg.ScatterPlotItem(
+                            [x],
+                            [y],
+                            size=marker_size,
+                            pen=pg.mkPen(border_color, width=1.5),
+                            brush=pg.mkBrush(*color, 185),
+                            symbol=active_symbol,
+                        )
+                        scatter.point_data = data
+                        scatter.setZValue(5)
+                        plot_widget.addItem(scatter)
+
+                        text = pg.TextItem(
+                            phoneme_text, anchor=(0.5, 0.5), color=(0, 0, 0)
+                        )
+                        font = text.textItem.font()
+                        font.setPointSizeF(8.5)
+                        font.setBold(True)
+                        text.setFont(font)
+                        text.setPos(x, y)
+                        text.setZValue(10)
+                        plot_widget.addItem(text)
+                        plot_widget.point_label_items.append(
+                            {
+                                "text_item": text,
+                                "vowel": phoneme_text,
+                                "x": float(x),
+                                "y": float(y),
+                            }
+                        )
 
             if current_pt_type != "monophthong" and len(target_coords) >= 2:
                 # Draw arrow from T1 to T2
                 x1, y1 = target_coords[0]
                 x2, y2 = target_coords[1]
 
-                # Make arrows and lines lighter by adding transparency
-                arrow_color = (*color, 80)
+                arrow_color = (*color, 130)
 
                 # Draw the line
-                line = pg.PlotDataItem(
+                line = pg.PlotCurveItem(
                     [x1, x2], [y1, y2], pen=pg.mkPen(arrow_color, width=2)
                 )
                 plot_widget.addItem(line)
@@ -1957,12 +2254,40 @@ class AutoSpeechAnalyzer(QMainWindow):
                 )
                 arrow.setPos(x2, y2)
                 plot_widget.addItem(arrow)
+        # Update compact legend at bottom right of the plot
+        old_legend = getattr(plot_widget, "compact_legend", None)
+        if old_legend is not None:
+            try:
+                if old_legend.scene() is not None:
+                    old_legend.scene().removeItem(old_legend)
+                old_legend.setParentItem(None)
+            except RuntimeError:
+                pass
+            plot_widget.compact_legend = None
+
+        plotted_vowels = sorted({entry["vowel"] for entry in plot_widget.point_label_items})
+        if plotted_vowels:
+            legend_entries = []
+            for v in plotted_vowels:
+                c, sym = self.get_phoneme_style(
+                    v, plot_type or "monophthong", sorted_vowels
+                )
+                bc = (max(0, c[0] - 55), max(0, c[1] - 55), max(0, c[2] - 55))
+                active_sym = sym if (plot_type or "monophthong") == "monophthong" else "o"
+                legend_entries.append((v, c, bc, active_sym))
+            col_cnt = 3 if len(legend_entries) > 6 else (2 if len(legend_entries) > 3 else 1)
+            legend = CompactLegendItem(legend_entries, col_count=col_cnt)
+            legend.setParentItem(plot_widget.plotItem)
+            legend.anchor(itemPos=(1, 1), parentPos=(1, 1), offset=(-6, -42))
+            plot_widget.compact_legend = legend
+
         plot_widget.setXRange(0, max_x * 1.1 if max_x > 0 else 1)
         plot_widget.setYRange(0, max_y * 1.1 if max_y > 0 else 1)
         plot_widget.setLimits(xMin=0, yMin=0)
         self.plot_formant_ground_truth_quadrilateral(
             self.current_gender, plot_widget=plot_widget
         )
+        self.update_scatter_label_visibility(plot_widget)
 
     def clear_formant_data(self):
         if self.formant_data:
@@ -2607,7 +2932,7 @@ class AutoSpeechAnalyzer(QMainWindow):
         self.update_all_formant_scatter_plots()
 
     def export_plot_data_to_csv(self, plot_widget):
-        """Export the scatter plot data to a CSV file."""
+        """Export the scatter plot data to CSV, plus a 300 DPI PNG and SVG of the current plot state with the same base filename."""
         if not hasattr(plot_widget, "scatter_data") or not plot_widget.scatter_data:
             print("No data to export")
             return
@@ -2623,23 +2948,65 @@ class AutoSpeechAnalyzer(QMainWindow):
         )
 
         file_path, _ = QFileDialog.getSaveFileName(
-            self, "Save CSV", filename, "CSV Files (*.csv)"
+            self, "Save CSV, PNG & SVG", filename, "CSV Files (*.csv)"
         )
 
         if not file_path:
             return
 
+        base_path, ext = os.path.splitext(file_path)
+        if not base_path:
+            base_path = file_path
+        csv_path = f"{base_path}.csv"
+        png_path = f"{base_path}.png"
+        svg_path = f"{base_path}.svg"
+
         try:
-            with open(file_path, "w", newline="", encoding="utf-8") as csvfile:
+            with open(csv_path, "w", newline="", encoding="utf-8") as csvfile:
                 fieldnames = ["label", "x", "y"]
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
                 for data in plot_widget.scatter_data:
                     # Data is already properly encoded when stored
                     writer.writerow(data)
-            print(f"Data exported to {file_path}")
+            print(f"Data exported to {csv_path}")
         except Exception as e:
-            print(f"Error exporting data: {e}")
+            print(f"Error exporting CSV data: {e}")
+
+        # Export current plot state (zoomed range, axes limits/units, visible points/labels) to 300 DPI PNG and SVG
+        plot_widget._exporting_lock = True
+        try:
+            # Ensure label visibility matches current view state before exporting
+            plot_widget._exporting_lock = False
+            self.update_scatter_label_visibility(plot_widget)
+            plot_widget._exporting_lock = True
+
+            # 1. Export SVG of current state
+            svg_exporter = pg_exporters.SVGExporter(plot_widget.plotItem)
+            svg_exporter.export(svg_path)
+            print(f"SVG exported to {svg_path}")
+
+            # 2. Export 300 DPI high-resolution PNG of current state
+            target_dpi = 300
+            screen_dpi = (
+                plot_widget.logicalDpiX()
+                if plot_widget.logicalDpiX() > 0
+                else 96
+            )
+            scale_factor = target_dpi / float(screen_dpi)
+            img_exporter = pg_exporters.ImageExporter(plot_widget.plotItem)
+            base_width = max(int(plot_widget.plotItem.width()), plot_widget.width(), 400)
+            img_exporter.parameters()["width"] = int(round(base_width * scale_factor))
+            qimg = img_exporter.export(toBytes=True)
+            dots_per_meter = int(round(target_dpi / 0.0254))
+            qimg.setDotsPerMeterX(dots_per_meter)
+            qimg.setDotsPerMeterY(dots_per_meter)
+            qimg.save(png_path, "PNG")
+            print(f"300 DPI PNG exported to {png_path}")
+        except Exception as e:
+            print(f"Error exporting plot images: {e}")
+        finally:
+            plot_widget._exporting_lock = False
 
 
 if __name__ == "__main__":
