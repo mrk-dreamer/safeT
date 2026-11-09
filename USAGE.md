@@ -41,7 +41,7 @@ Once activated, the reference formant targets from `landmark_identification_grou
 
 To set scaling factor for emission cost, modify the constants `VITERBI_EMISSION_MONOPHTHONG_WEIGHT` and `VITERBI_EMISSION_DIPHTHONG_WEIGHT` in `formants.py` to scale emission cost for monophthongs and diphthongs respectively. This factor scales the influence of emission cost relative to transition cost during Viterbi-based cleaning.
 
-Change the value of `VITERBI_DELTA` in `formants.py` to adjust the threshold for Huber loss in transition cost, changing the transition cost function from quadratic to linear below this threshold.
+Change the value of `VITERBI_DELTA` in `formants.py` to adjust the threshold for Huber loss in transition cost, changing the transition cost function from linear to quadratic below this threshold.
 
 ### Adjusting Praat formant extraction settings
 To adjust the Praat formant extraction settings (maximum formant frequency, number of formants, window length, time step, preemphasis base), open `formants.py` and modify the following constants as needed:
