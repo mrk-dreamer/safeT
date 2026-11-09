@@ -31,6 +31,7 @@
 4. There is a scrollable list above the vowel plots, showing all stimulus sentences, their words of interest, and vowels, within those words that are plotted in the vowel plots. You can click on any vowel in the list to toggle its visibility in the vowel plots. You choose which formant to plot in which axis of the vowel plots using the dropdown menus beside `X Axis (Formant):` and `Y Axis (Formant):`. You can right-click on vowel plots to get more options like flipping the axes.
 5. The 'Gender:' toggle button changes the reference vowel plot (in red). When toggled, the values in `landmark_identification_ground_truth.csv`, are used as reference. If gender is 'F' female gender data is used, otherwise male. Only female data is provided for now, from the paper: Cox, Felicity. (2006). The Acoustic Characteristics of /hVd/ Vowels in the Speech of some Australian Teenagers, Australian Journal of Linguistics. 26. 10.1080/07268600600885494. The values in the CSV file can be changed as needed.
 6. Click the `Export Formant Targets` button below waveform plot to save formant targets' data as visible in spectrogram and vowel plots. The formant targets for each vowel segment will be saved in a CSV file named `formant_targets.csv` in the same directory as the main project.
+7. Click the export buttons under each vowel space plot to export the plot data as CSV, PNG and SVG.
 
 ## Additional settings
 
